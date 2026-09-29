@@ -16,7 +16,7 @@ function buildMoneycontrolQuery(date: string, period: string, sector?: string): 
     const sectorName = sector ?? "Banking";
     return `site:screener.in/company/ OR site:moneycontrol.com/india/stockpricequote/ NSE ${sectorName} sector top stocks CMP Rs P/E 20 EMA RSI`;
   }
-  return `site:moneycontrol.com OR site:tradingview.com/symbols/ Nifty 50 Bank Nifty Sensex MCX Silver closing price support resistance levels`;
+  return `Nifty 50 Bank Nifty Sensex MCX Silver closing price support resistance levels ${date} site:moneycontrol.com OR site:economictimes.indiatimes.com OR site:nseindia.com`;
 }
 
 function buildEconomicTimesQuery(date: string, period: string, sector?: string): string {
@@ -24,7 +24,7 @@ function buildEconomicTimesQuery(date: string, period: string, sector?: string):
     const sectorName = sector ?? "Banking";
     return `site:economictimes.indiatimes.com OR site:screener.in NSE ${sectorName} stocks performance volume 20 EMA RSI price`;
   }
-  return `site:economictimes.indiatimes.com Nifty 50 Bank Nifty Sensex MCX Silver rate latest close support resistance`;
+  return `Nifty Bank Nifty Sensex live price today ${date} site:economictimes.indiatimes.com OR site:moneycontrol.com`;
 }
 
 function getDrikPanchangUrl(date: string): string {
