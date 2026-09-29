@@ -52,7 +52,6 @@ export async function runOpenRouterAnalysis(prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model,
-      plugins: [{ id: "web", engine: "perplexity" }],
       messages,
       response_format: { type: "json_object" },
       temperature: 0.0,
