@@ -1,19 +1,12 @@
 import type { AnalysisKind, Period } from "@/types/analysis";
 
-const CONTEXT_BLOCK = `CRITICAL FACTUAL GROUNDING & DUAL-SOURCE RECONFIRMATION COMPLIANCE:
+const CONTEXT_BLOCK = `CRITICAL FACTUAL GROUNDING & REAL-TIME RECONFIRMATION COMPLIANCE:
 1. ASTROLOGY (OFFICIAL DRIK PANCHANG): You MUST read the provided OFFICIAL DRIK PANCHANG context below for {{DATE}} and copy the EXACT Tithi, Nakshatra (with exact end timings), Yoga, Karana, Rahu Kalam, Yamaganda, and Abhijit Muhurta word-for-word as stated in Drik Panchang.
    - Ground all astrological timings strictly in Indian Standard Time (IST).
    - DO NOT hallucinate or guess Nakshatra transitions, Yoga shifts, or auspicious windows.
-2. DUAL-SOURCE FINANCIAL PRICE RECONFIRMATION (Nifty 50, Bank Nifty, Sensex, MCX Silver):
-   - You MUST cross-verify prices from BOTH financial sources provided in the context below:
-     * Source A: Moneycontrol
-     * Source B: Economic Times
-   - Reconfirm that Nifty 50, Bank Nifty, Sensex, and MCX Silver baseline prices match between both sources before computing projected support/resistance, breakouts, and intraday targets.
-   - Ground all price levels in current Indian market reality:
-     * Nifty 50: ~24,000–24,500 range
-     * Bank Nifty: ~57,000–58,500 range
-     * Sensex: ~76,500–77,500 range
-     * MCX Silver: ~₹2,30,000–₹2,45,000 per kg range (NOT outdated 85k figures).
+2. LIVE FINANCIAL PRICE GROUNDING (Nifty 50, Bank Nifty, Sensex, MCX Silver):
+   - You MUST ground all technical levels, S1/S2/S3, R1/R2/R3, and projected pivots strictly around the ACTUAL LIVE CLOSING / TRADING PRICES provided in the web context below.
+   - Never use static or hardcoded numbers from previous weeks or months. Base every calculation on the real current market levels for {{DATE}}.
    - DO NOT invent fictitious numbers.
 
 {{WEB_CONTEXT}}`;
