@@ -131,7 +131,7 @@ EXA_FALLBACK_API_KEY="8e6ee032-****-****-****-d1c5f00f95c3"
 - **Prompt rules:** copy verified numbers exactly; never write "unavailable"/"N/A" or comment on missing context; Vimshottari Dasha removed from Monthly (needs a birth chart, not sourceable for an index).
 - **Verified live (15 Oct 2026):** all 7 timeframes HTTP 200 with exact rows on `tradewise-aon` and `testing-harish`; values matched Drik Panchang and Yahoo (Nifty prev close 22,622.70, 20 EMA 22,851, RSI-14 41.7).
 
-- **⚠️ Exa in production (was OPEN):** Production logs show Exa returning `402 Payment Required` for both `EXA_API_KEY` and `EXA_FALLBACK_API_KEY` stored in the Cloudflare secrets (old, exhausted keys). The working key is only in `.env.local`. Production output therefore has no Panchang or live prices, and now says "unavailable" instead of showing the old fixed bands. This has likely been true since Milestone 7. Fix: rotate the key, run `wrangler pages secret put EXA_API_KEY` (and `EXA_FALLBACK_API_KEY`) for both projects, then redeploy.
+- **Exa key rotated (15 Oct 2026):** Old key deleted; new key set in `.env.local` and the `tradewise` (production) Cloudflare secrets, verified live (no 402s). `testing-harish` still holds the old key (deliberately left; it works without Exa but gets no news context). Never commit the key.
 
 ---
 
