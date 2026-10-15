@@ -3,16 +3,18 @@ import type { AnalysisKind, Period } from "@/types/analysis";
 const CONTEXT_BLOCK = `CRITICAL FACTUAL GROUNDING & DUAL-SOURCE RECONFIRMATION COMPLIANCE:
 1. ASTROLOGY (OFFICIAL DRIK PANCHANG): You MUST read the provided OFFICIAL DRIK PANCHANG context below for {{DATE}} and copy the EXACT Tithi, Nakshatra (with exact end timings), Yoga, Karana, Rahu Kalam, Yamaganda, and Abhijit Muhurta word-for-word as stated in Drik Panchang.
    - Ground all astrological timings strictly in Indian Standard Time (IST).
-   - DO NOT hallucinate or guess Nakshatra transitions, Yoga shifts, or auspicious windows.
-2. DUAL-SOURCE FINANCIAL PRICE RECONFIRMATION (Nifty 50, Bank Nifty, Sensex, MCX Silver):
-   - You MUST cross-verify prices from BOTH financial sources provided in the context below:
-     * Source A: Moneycontrol
-     * Source B: Economic Times
-   - Reconfirm that Nifty 50, Bank Nifty, Sensex, and MCX Silver baseline prices match between both sources before computing projected support/resistance, breakouts, and intraday targets.
-   - Anchor every price level (anchor close, S1/S2, R1/R2, targets, stop losses) to the latest prices quoted in the context below. Do not use remembered or assumed price ranges.
-   - MCX Silver is quoted per kg (in 2026 it trades in lakhs per kg, never the outdated ~₹85,000 figures). Use the live per-kg price from the context.
-   - If an instrument's live price is missing from the context, write "Live price unavailable" for its levels instead of estimating.
-   - DO NOT invent fictitious numbers.
+   - Daily plan intraday slots: Section 1B (HORA & MUHURTA BY TRADING SLOT) lists, for each slot, every overlapping hora, inauspicious window (Rahu Kalam, Yamaganda, Gulikai Kalam, Dur Muhurtam, Varjyam) and auspicious window (Abhijit, Vijaya Muhurta, Amrit Kalam). Use it as-is for that slot's Hora, Restrictions and Abhijit fields: the Restrictions field must list EVERY Inauspicious entry of that slot with its times (write "None" only when 1B says none). Do not re-derive overlaps yourself. If Section 1B is absent, write "Hora: unavailable".
+   - Nakshatra and Yoga categories: copy them from the "Triple Confirmation categories" line in Section 1 / 1W; do not classify them yourself.
+   - Weekly plan: Section 1W gives each trading day's Panchang, categories and market-hours horas. Use the matching day's values for that row; Best Hora = the most favourable hora in that day's list, with its time.
+   - Monthly / Half-Yearly / Yearly plans: Section 1C is the complete list of planet ingresses (with dignity), retrograde changes and eclipses in the plan window, with exact dates. Use only these; for a period with no event write "No ingress, retrograde or eclipse".
+   - DO NOT hallucinate or guess Nakshatra transitions, Yoga shifts, or auspicious windows. Mention only Panchang elements and timings that appear in the context (do not invent the next Karana or Yoga).
+2. VERIFIED MARKET DATA FIRST (Nifty 50, Bank Nifty, Sensex, MCX Silver):
+   - Section 0 (VERIFIED INDEX DATA) is computed from exchange closes. Copy each index's previous close, live price, 20/50/200 EMA and RSI-14 exactly as given there; never compute or estimate your own EMA or RSI. "Anchor Close" always means the previous close from Section 0.
+   - Section 0B (VERIFIED MCX SILVER QUOTE): use the LTP as the Silver anchor and copy the previous close, open and day range as given, in Rs per kg. The contract lifetime range is NOT a support or resistance level. Never use outdated ~₹85,000/kg figures.
+   - Derive S1/S2, R1/R2, breakout, target and stop-loss levels from these verified anchors (previous close, live price, day range, EMAs, round numbers). Do not use remembered or assumed price ranges.
+   - Use Financial Source A (Moneycontrol) and Source B (Economic Times) for news, cues and cross-checks. If a snippet's price disagrees with Section 0/0B, trust Section 0/0B.
+   - Sector plan: Section 0C lists verified data for the sector's candidate stocks. Choose exactly 3 of them and copy LTP (the live / today's close value if given, else the previous close), 20 EMA, 50 EMA, RSI-14, volume ratio and 1M return exactly. Relative strength = the stock's 1M return vs Nifty 50's 1M return in Section 0.
+   - Never write "unavailable", "N/A", "not provided", "unverified" or "not in context". Build every cell from the verified sections; if a qualitative item (news, FII/DII flows, earnings, sentiment) has no data in the context, leave it out instead of flagging it. Never comment on what the context does or does not contain, in any field (including time_ist labels, which must be just the period label, e.g. "Week 1 (Oct 1-7, 2026)"). Only if a Section 0/0B/0C value itself reads "unavailable" may you say that price is unavailable. DO NOT invent fictitious numbers.
 
 {{WEB_CONTEXT}}`;
 
@@ -99,6 +101,48 @@ ${keysList}
 Map the requested table columns into those keys in order. Keep all details inside the matching JSON fields. All values must be strings.${footerStr}`;
 }
 
+type MatrixCategories = Array<[label: string, names: string[], note?: string]>;
+
+// Triple Confirmation matrix. Drives both the prompt text and the classification line computed from
+// the fetched Panchang, so the model never has to classify a Nakshatra or Yoga itself.
+export const NAKSHATRA_CATEGORIES: MatrixCategories = [
+  ["🟢 Bullish", ["Ashwini", "Rohini", "Punarvasu", "Pushya", "Hasta", "Swati", "Anuradha", "Uttara Ashadha", "Dhanishta", "Uttara Bhadrapada", "Revati"]],
+  ["🟡 Neutral", ["Mrigashira", "Uttara Phalguni", "Shravana"]],
+  ["🔴 Bearish", ["Bharani", "Krittika", "Ardra", "Ashlesha", "Magha", "Purva Phalguni", "Chitra", "Vishakha", "Jyeshtha", "Mula", "Purva Ashadha", "Shatabhisha", "Purva Bhadrapada"]]
+];
+
+export const YOGA_CATEGORIES: MatrixCategories = [
+  ["BEST", ["Sukarma", "Shubha", "Shobhana"], "100% / Full Size Buy when paired with Bullish Nakshatra"],
+  ["GOOD", ["Priti", "Ayushman", "Saubhagya", "Dhruva", "Vriddhi", "Sadhya"]],
+  ["MILD BULLISH", ["Siddhi", "Shiva", "Brahma", "Indra", "Shukla", "Siddha"]],
+  ["NEUTRAL/CAUTION", ["Vishkumbha", "Harshana", "Variyan"]],
+  ["BEARISH", ["Atiganda"]],
+  ["DANGER", ["Shoola", "Ganda", "Vyaghata", "Vajra", "Vyatipata", "Parigha", "Vaidhriti"], "AVOID"]
+];
+
+function formatCategories(categories: MatrixCategories): string {
+  return categories
+    .map(([label, names, note]) => `  - ${label} (${names.length}): ${names.join(", ")}.${note ? ` (${note})` : ""}`)
+    .join("\n");
+}
+
+// Drik and the matrix spell some names differently (Dhanishtha/Dhanishta, Shula/Shoola,
+// Variyana/Variyan, Vishkambha/Vishkumbha).
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z]/g, "")
+    .replace(/h/g, "")
+    .replace(/oo/g, "u")
+    .replace(/umb/g, "amb")
+    .replace(/a$/, "");
+}
+
+export function classifyName(name: string, categories: MatrixCategories): string | null {
+  const target = normalizeName(name);
+  return categories.find(([, names]) => names.some((candidate) => normalizeName(candidate) === target))?.[0] ?? null;
+}
+
 const HIERARCHICAL_DECISION_RULES = `
 ### 🏛️ HIERARCHICAL DECISION MATRIX
 | Priority | Timeframe | Decision Type | Overrides |
@@ -114,16 +158,9 @@ const HIERARCHICAL_DECISION_RULES = `
 
 ### 📊 NAKSHATRA & YOGA COMBINATION MATRIX SUMMARY
 - Nakshatra Categories:
-  - 🟢 Bullish (11): Ashwini, Rohini, Punarvasu, Pushya, Hasta, Swati, Anuradha, Uttara Ashadha, Dhanishta, Uttara Bhadrapada, Revati.
-  - 🟡 Neutral (3): Mrigashira, Uttara Phalguni, Shravana.
-  - 🔴 Bearish (13): Bharani, Krittika, Ardra, Ashlesha, Magha, Purva Phalguni, Chitra, Vishakha, Jyeshtha, Mula, Purva Ashadha, Shatabhisha, Purva Bhadrapada.
+${formatCategories(NAKSHATRA_CATEGORIES)}
 - Yoga Categories:
-  - BEST (3): Sukarma, Shubha, Shobhana. (100% / Full Size Buy when paired with Bullish Nakshatra)
-  - GOOD (6): Priti, Ayushman, Saubhagya, Dhruva, Vriddhi, Sadhya.
-  - MILD BULLISH (6): Siddhi, Shiva, Brahma, Indra, Shukla, Siddha.
-  - NEUTRAL/CAUTION (3): Vishkumbha, Harshana, Variyan.
-  - BEARISH (1): Atiganda.
-  - DANGER (7 - AVOID): Shoola, Ganda, Vyaghata, Vajra, Vyatipata, Parigha, Vaidhriti.
+${formatCategories(YOGA_CATEGORIES)}
 - Key Actions:
   - Bullish Nakshatra + Best/Good Yoga → AGGRESSIVE BUY / BUY (60-100% position size)
   - Bearish/Danger Yoga or Bearish Nakshatra + Danger Yoga → STAY CASH / AVOID (39 Danger combinations = 0% position size)
@@ -151,7 +188,7 @@ Time Slots: 09:15-09:37, 09:37-10:30, 10:30-11:36, 11:36-12:08, 12:08-12:24, 12:
 CRITICAL FORMATTING RULES — KEEP OUTPUT CONCISE AND HIGH-SIGNAL:
 - Market Bias: State single bias keyword (e.g. BULLISH, BEARISH, NEUTRAL, VOLATILE / AVOID) followed by a short 1-line reason (max 15 words). DO NOT write lengthy multi-sentence paragraphs.
 - Astrological Event: Terse format: "Nakshatra: [Name] (till [Time]) | Hora: [Planet] | Karana: [Name] | Yoga: [Name] | Restrictions: [Yamaganda/Gulika/Rahu/None] | Abhijit: [Active/Absent]".
-- Technical Levels: Clean format with Anchor Close, S1/S2, R1/R2, Breakout levels.
+- Technical Levels: Clean format: "Anchor Close: [previous close] | S1/S2: [..] | R1/R2: [..] | 20 EMA: [..] | RSI-14: [..] | Breakout: [..]", with Anchor Close, 20 EMA and RSI-14 copied from Section 0.
 - Silver: Clean format: "Anchor: ~Rs [live MCX price]/kg | S: [S1] / [S2] | R: [R1] / [R2] | Entry: Buy/Sell setup, SL, T1, T2", with every level derived from the live MCX Silver price in the context.
 - Bullish / Bearish Sectors: List 2 sectors with 2 stocks each (e.g. "Pharma (Sun Pharma, Cipla) | FMCG (ITC, Dabur)").
 - Actionable Strategy: Direct trade instruction with Position Size % and SL. If inauspicious window active: "AVOID — NO NEW ENTRIES ([Reason]). Size: 0% new."
@@ -169,7 +206,7 @@ Generate a structured, clean, and concise weekly trading plan for the trading we
 CRITICAL FORMATTING RULES — CONCISE & STRUCTURED:
 - Market Bias: Single bias keyword + 1-line concise reason.
 - Astrological Highlights: Terse format: "Tithi: [Name] | Nakshatra: [Name] | Yoga: [Name] | Karana: [Name] | Best Hora: [Planet] | Restrictions: [Times]".
-- Technical Levels: Expected weekly/daily S1/S2, R1/R2, 20/50/200 EMA trend, RSI-14.
+- Technical Levels: Expected weekly/daily S1/S2, R1/R2, 20/50/200 EMA trend, RSI-14 (EMA and RSI-14 values copied from Section 0).
 - Silver: Expected weekly S/R range (per kg) built around the live MCX Silver price in the context.
 - Sectors: 2 Favoured sectors with 2 stocks each, 2 Bearish sectors with 2 stocks each.
 - Actionable Strategy: Recommended entry window, Position Size %, and Stop Loss guidance.
@@ -187,13 +224,13 @@ Act as my Triple Confirmation trading professor. You are a world-class expert in
 Generate a monthly trading plan for the calendar month that contains {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. Each row must be one week (4 weeks total), with a final footer row for month-end targets. Output exactly 5 rows: Week 1 (days 1–7), Week 2 (days 8–14), Week 3 (days 15–21), Week 4 (day 22 to month end), in order, then one Footer Row. Do not add any other rows.
 
 Requirements per week:
-1. Major Astrological Events: Planet ingress, retrograde start/end, exaltation/debilitation, eclipse (solar/lunar) - mark 3 days before/after as "cash preferred", Vimshottari Dasha theme for the month.
+1. Major Astrological Events (from Section 1C): planet ingress with exaltation/debilitation, retrograde start/end, eclipses (solar/lunar) with their 3-days-before/after "cash preferred" window.
 2. Market Bias: Bullish/Bearish/Range with planetary reason.
 3. Technical Ranges: Expected weekly support/resistance for Nifty, Bank Nifty, Sensex based on monthly pivot, round numbers.
 4. Bullish Sectors: 2 sectors with 2 stocks each + astrological reason.
 5. Bearish Sectors: 2 sectors with 2 stocks each + astrological reason.
 6. Actionable Strategy: Best entry day(s), position size % of normal (reduce 40% during eclipse weeks), stop loss: 3-5% for swing trades.
-7. Add a Footer Row: Gann 30/60/90-day cycle turning points within the month, key economic releases (RBI MPC, Fed, CPI, PPI), month-end Nifty target range and Silver target range.
+7. Add a Footer Row: Gann 30/60/90-day cycle turning points within the month, key economic releases (RBI MPC, Fed, CPI, PPI; give a date only if the context lists one, otherwise name the release with no remark about its date), month-end Nifty target range and Silver target range.
 
 Use previous month's closing data where available.
 
@@ -210,9 +247,9 @@ Act as my Triple Confirmation trading professor. You are a world-class expert in
 Generate a half-yearly trading plan anchored to {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. Each row must be one month (6 months total), with a final footer row for half-year summary. Output exactly 7 rows: the 6 consecutive calendar months starting with the month that contains {{DATE}}, in order, then one Footer Row. Do not add a separate row for {{DATE}} itself or any other rows.
 
 Requirements per month:
-1. Key Astrological Events: Exact dates of Sun/Mercury/Venus/Mars/Jupiter/Saturn sign changes, retrograde periods, eclipses (with cash recommendation 3 days before/after), equinox/solstice.
+1. Key Astrological Events: Exact dates of Sun/Mercury/Venus/Mars/Jupiter/Saturn sign changes, retrograde periods, eclipses (with cash recommendation 3 days before/after), equinox/solstice. Take all sign-change, retrograde and eclipse dates from Section 1C.
 2. Market Bias: Bullish/Bearish/Range with planetary reason.
-3. Technical Ranges: Round monthly support/resistance for Nifty, Bank Nifty, Sensex, reference 20/50/200 EMA on monthly chart.
+3. Technical Ranges: Round monthly support/resistance for Nifty, Bank Nifty, Sensex, referencing the daily 20/50/200 EMA from Section 0.
 4. Primary Sector: Based on exalted planets, with two specific NSE stocks.
 5. Secondary Sector: Hedge sector (e.g. Pharma, FMCG), with two specific NSE stocks.
 6. Position Size Base: % of normal capital for that month (e.g. 80% during Jupiter exaltation, 50% during eclipse).
@@ -234,7 +271,7 @@ Act as my Triple Confirmation trading professor. You are a world-class expert in
 Generate an annual trading plan anchored to {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. Each row must be one quarter (4 quarters total), with a final footer row for year-end targets. Output exactly 5 rows: the 4 consecutive calendar quarters starting with the quarter that contains {{DATE}}, in order, then one Footer Row. Do not add any other rows.
 
 Requirements per quarter:
-1. Major Astrological Events: All planet ingresses, retrogrades, solar/lunar eclipses (with cash windows), equinox/solstice dates.
+1. Major Astrological Events: All planet ingresses, retrogrades, solar/lunar eclipses (with cash windows), equinox/solstice dates. Take all ingress, retrograde and eclipse dates from Section 1C.
 2. Market Bias: Bullish/Bearish/Range with planetary reason.
 3. Technical Ranges: Quarterly support/resistance for Nifty, Bank Nifty, Sensex based on previous year's close, round numbers.
 4. Sector Allocation: Percentage allocation breakdown across sectors (e.g. Banking 40%, IT 20%, Metals 10%, Pharma 15%, Gold 15%).
@@ -256,7 +293,7 @@ const SECTOR_PROMPT = `### 🏆 TRIPLE CONFIRMATION 6.0 – SECTOR STOCK SELECTO
 Perform a rigorous, high-conviction Stock Selection & Triple Confirmation Analysis for the **{{SECTOR}}** sector on **{{DATE}}**.
 
 CRITICAL INSTRUCTIONS & ACCURACY STANDARDS:
-1. Return exactly 3 distinct stock cards where each item represents ONE specific company stock in the {{SECTOR}} sector (e.g., time_ist: "Stock 1: HDFC Bank", time_ist: "Stock 2: ICICI Bank", time_ist: "Stock 3: State Bank of India").
+1. Return exactly 3 distinct stock cards, chosen only from Section 0C, where each item represents ONE specific company stock in the {{SECTOR}} sector (e.g., time_ist: "Stock 1: HDFC Bank", time_ist: "Stock 2: ICICI Bank", time_ist: "Stock 3: State Bank of India").
 2. Real Numerical Precision (NO VAGUE TEXT OR TIME SLOTS IN CARD TITLES):
    - time_ist: "Stock [Number]: [Stock Name & NSE Symbol]"
    - astro_event (Astro Checklist): Sector Ruling Planet dignity today, Abhijit Muhurta timing (11:55-12:46 IST), Nakshatra & Yoga alignment, Inauspicious hours (Yamaganda/Gulika/Rahu) to avoid.

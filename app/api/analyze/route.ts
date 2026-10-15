@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getAstroEventsContext } from "@/lib/astroEvents";
 import { getExaWebContext } from "@/lib/exa";
+import { getMarketDataContext } from "@/lib/marketData";
 import { SECTORS } from "@/lib/markets";
 import { runOpenRouterAnalysis } from "@/lib/openrouter";
 import { buildPrompt, buildResponseSchema, RESPONSE_SHAPES } from "@/lib/prompts";
@@ -113,8 +115,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalysisR
   }
 
   try {
-    const webContext = await getExaWebContext(date, period, sector || undefined);
-    const prompt = buildPrompt(period, date, sector, webContext);
+    const [webContext, marketData, astroEvents] = await Promise.all([
+      getExaWebContext(date, period, sector || undefined),
+      getMarketDataContext(date, period, sector || undefined),
+      getAstroEventsContext(date, period)
+    ]);
+    const context = [marketData, astroEvents, webContext].filter(Boolean).join("\n\n");
+    const prompt = buildPrompt(period, date, sector, context);
     const schema = buildResponseSchema(period);
     const { rowNames } = RESPONSE_SHAPES[period];
 
