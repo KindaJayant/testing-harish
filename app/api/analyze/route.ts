@@ -3,10 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getExaWebContext } from "@/lib/exa";
 import { SECTORS } from "@/lib/markets";
 import { runOpenRouterAnalysis } from "@/lib/openrouter";
-import { buildPrompt } from "@/lib/prompts";
+import { buildPrompt, buildResponseSchema, RESPONSE_SHAPES } from "@/lib/prompts";
 import type { AnalysisKind, AnalysisRow, AnalysisResponse } from "@/types/analysis";
 
 export const runtime = "edge";
+
+const MAX_MODEL_ATTEMPTS = 2;
 
 interface AnalyzeRequestBody {
   date?: unknown;
@@ -52,21 +54,23 @@ function isAnalysisRows(value: unknown): value is AnalysisRow[] {
 }
 
 function stripMarkdownFences(raw: string): string {
-  let cleaned = raw.trim();
-  // Remove outer markdown code blocks if present
-  cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/u, "").trim();
+  return raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/u, "").trim();
+}
 
-  // Extract JSON array between first '[' and last ']' if there is surrounding prose
-  const firstBracket = cleaned.indexOf("[");
-  const lastBracket = cleaned.lastIndexOf("]");
-  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-    cleaned = cleaned.substring(firstBracket, lastBracket + 1);
+// The model returns one named property per row (see RESPONSE_SHAPES); flatten it back into ordered rows.
+function parseRows(raw: string, rowNames: string[]): AnalysisRow[] | null {
+  try {
+    const parsed: unknown = JSON.parse(stripMarkdownFences(raw));
+
+    if (!isRecord(parsed)) {
+      return null;
+    }
+
+    const rows = rowNames.map((name) => parsed[name]);
+    return isAnalysisRows(rows) ? rows : null;
+  } catch {
+    return null;
   }
-
-  // Repair trailing commas inside objects or arrays (e.g., {"key": "val",} or [a, b,])
-  cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
-
-  return cleaned;
 }
 
 function errorResponse(message: string, status: number): NextResponse<AnalysisResponse> {
@@ -111,25 +115,22 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalysisR
   try {
     const webContext = await getExaWebContext(date, period, sector || undefined);
     const prompt = buildPrompt(period, date, sector, webContext);
-    const rawResponse = await runOpenRouterAnalysis(prompt);
-    const cleaned = stripMarkdownFences(rawResponse);
+    const schema = buildResponseSchema(period);
+    const { rowNames } = RESPONSE_SHAPES[period];
 
-    let parsed: unknown;
+    // Structured outputs make bad JSON rare; one silent retry covers the rest.
+    for (let attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt++) {
+      const rows = parseRows(await runOpenRouterAnalysis(prompt, schema), rowNames);
 
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return errorResponse("The model returned invalid JSON. Please retry.", 502);
+      if (rows) {
+        return NextResponse.json({
+          success: true,
+          rows
+        });
+      }
     }
 
-    if (!isAnalysisRows(parsed)) {
-      return errorResponse("The model returned invalid JSON. Please retry.", 502);
-    }
-
-    return NextResponse.json({
-      success: true,
-      rows: parsed
-    });
+    return errorResponse("The model returned invalid JSON. Please retry.", 502);
   } catch (error: unknown) {
     const knownErrors = new Set([
       "OPENROUTER_API_KEY is not configured.",

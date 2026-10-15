@@ -27,6 +27,10 @@ function buildEconomicTimesQuery(date: string, period: string, sector?: string):
   return `Nifty Bank Nifty Sensex live price today ${date} site:economictimes.indiatimes.com OR site:moneycontrol.com`;
 }
 
+function buildSilverQuery(date: string): string {
+  return `MCX Silver price today per kg ${date} rate site:economictimes.indiatimes.com OR site:moneycontrol.com OR site:goodreturns.in`;
+}
+
 function getDrikPanchangUrl(date: string): string {
   // Format YYYY-MM-DD into DD/MM/YYYY for Drik Panchang URL and lock to Delhi / Indian Standard Time coordinates
   const parts = date.split("-");
@@ -87,6 +91,12 @@ export async function getExaWebContext(
   const drikUrl = getDrikPanchangUrl(date);
   const mcQuery = buildMoneycontrolQuery(date, period, sector);
   const etQuery = buildEconomicTimesQuery(date, period, sector);
+
+  // The index queries rarely surface an MCX Silver quote, so fetch one separately (best effort).
+  const silverRequest =
+    period === "sector"
+      ? Promise.resolve(null)
+      : executeMarketSearch(primaryKey, buildSilverQuery(date), 2).catch(() => null);
 
   try {
     let panchangRes: Response;
@@ -153,6 +163,18 @@ export async function getExaWebContext(
         const title = result.title?.trim() || "Economic Times Quote";
         const text = result.text?.replace(/\s+/g, " ").trim().slice(0, 2500) || "";
         contextParts.push(`[Economic Times ${index + 1}: ${title}]\n${text}`);
+      });
+    }
+
+    const silverRes = await silverRequest;
+    const silverPayload = silverRes?.ok ? ((await silverRes.json()) as ExaSearchResponse) : { results: [] };
+    const silverResults = silverPayload.results ?? [];
+    if (silverResults.length > 0) {
+      contextParts.push(`\n### 4. MCX SILVER (Live per-kg price) FOR ${date}:`);
+      silverResults.forEach((result, index) => {
+        const title = result.title?.trim() || "MCX Silver Quote";
+        const text = result.text?.replace(/\s+/g, " ").trim().slice(0, 2500) || "";
+        contextParts.push(`[Silver ${index + 1}: ${title}]\n${text}`);
       });
     }
 

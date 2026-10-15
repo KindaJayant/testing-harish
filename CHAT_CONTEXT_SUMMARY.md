@@ -79,9 +79,10 @@ EXA_FALLBACK_API_KEY="8e6ee032-****-****-****-d1c5f00f95c3"
   10. `Risk Management` (Compulsory statutory rules)
   11. `Footer Row` (Daily summary / index matrix)
 
-### Milestone 2: MCX Silver 2026 Baseline Price Rule
-- MCX Silver in 2026 trades in the active range of **₹2,30,000 – ₹2,45,000 per kg** (anchor in reference Excel: ~₹2,42,793/kg).
-- Outdated 2023–2024 pricing (~₹85,000/kg) was banned from prompts and technical references.
+### Milestone 2: MCX Silver 2026 Baseline Price Rule (superseded by Milestone 8)
+- Originally hardcoded MCX Silver at **₹2,30,000 – ₹2,45,000 per kg** (anchor in reference Excel: ~₹2,42,793/kg), with similar fixed ranges for Nifty, Bank Nifty and Sensex.
+- Outdated 2023–2024 pricing (~₹85,000/kg) was banned from prompts and technical references (still banned).
+- These fixed bands went stale (on 15 Oct 2026 MCX Silver Dec was ₹2,11,105/kg, Nifty ~22,623). All levels are now anchored to live quotes instead.
 
 ### Milestone 3: Concise Table Formatting & Removal of Essay Text
 - Refactored `DAILY_PROMPT` and `WEEKLY_PROMPT` in `lib/prompts.ts`.
@@ -112,10 +113,15 @@ EXA_FALLBACK_API_KEY="8e6ee032-****-****-****-d1c5f00f95c3"
 
 ### Milestone 8: Switch to Claude Haiku 5.5 & Secret Cleanup (15 Oct 2026)
 - **Model:** `OPENROUTER_MODEL` changed to `anthropic/claude-haiku-5.5` in `.env.local` and in the Cloudflare Pages secrets for both projects. It is about 7x cheaper per token than Gemini 3.8 Flash and roughly 2x faster on Daily (~20s vs ~49s).
-- **Reasoning disabled (`lib/openrouter.ts`):** Haiku 5.5 reasons by default, and its reasoning tokens count against `max_tokens: 12000`. On the Daily prompt it used the whole budget and returned empty or truncated JSON. The request now sends `reasoning: { enabled: false }`.
+- **Reasoning disabled for Claude (`lib/openrouter.ts`):** Haiku 5.5 reasons by default, and its reasoning tokens count against `max_tokens: 12000`. On the Daily prompt it used the whole budget and returned empty or truncated JSON. Requests to `anthropic/*` models now send `reasoning: { enabled: false }`. It is not sent to Gemini, which rejects it ("Reasoning is mandatory"). Capping reasoning instead was slower and still truncated.
+- **Structured outputs (`RESPONSE_SHAPES` / `buildResponseSchema` in `lib/prompts.ts`):** Without reasoning, Haiku did not keep the row layout on Monthly / Half-Yearly / Yearly (2–10 rows). The model now returns a JSON object with one named property per row (e.g. `slot_0915_0937 … footer_summary`, `monday … footer`, `quarter_1 … footer`), enforced by an OpenRouter `json_schema` with `strict: true`. The route flattens it back into ordered rows. Rows reference a shared `$defs/row`; inlining it made the Daily and Half-Yearly grammars too large for Anthropic. Sector now returns exactly 3 stock cards. Gemini works with the same contract.
+- **Retry (`app/api/analyze/route.ts`):** If a response still fails validation, the route silently retries once before returning a 502.
+- **Prompt row specs:** Weekly covers the Mon–Fri week containing the date. Monthly covers the calendar month in weeks 1–7 / 8–14 / 15–21 / 22–end. Half-Yearly covers 6 months and Yearly 4 quarters, each starting from the date's month or quarter.
+- **Live price anchoring:** Removed the fixed Nifty / Bank Nifty / Sensex / Silver ranges and the ₹2,42,000 Silver example. The model must anchor levels to quotes in the context, or write "Live price unavailable". `lib/exa.ts` adds a dedicated MCX Silver search (ET silver page / Goodreturns), because the index queries never returned a Silver quote.
 - **Sampling params:** OpenRouter does not support `temperature`, `top_p` or `seed` for Haiku 5.5 and silently drops them, so repeated runs are not byte-identical.
-- **Weekly prompt (`lib/prompts.ts`):** Haiku took "week starting {{DATE}}" literally and ran mid-week dates into the next week (8 rows). The prompt now says to cover the Mon–Fri week that contains the date, in exactly 6 rows.
+- **Verified live (15 Oct 2026):** All 7 checks (Daily, Weekly, Monthly, Half-Yearly, Yearly, Sector Banking/IT) returned HTTP 200 with exact row counts on both `tradewise-aon` and `testing-harish`, in 8–20s.
 - **Secrets:** Removed the hardcoded Exa key fallback from `lib/exa.ts`; it now throws `EXA_API_KEY is not configured.` when the env var is missing. Masked the key in this document. The full key remains in public git history (commits `a34870e`, `23e6a57`), so it should be rotated.
+- **⚠️ OPEN — Exa dead in production:** Production logs show Exa returning `402 Payment Required` for both `EXA_API_KEY` and `EXA_FALLBACK_API_KEY` stored in the Cloudflare secrets (old, exhausted keys). The working key is only in `.env.local`. Production output therefore has no Panchang or live prices, and now says "unavailable" instead of showing the old fixed bands. This has likely been true since Milestone 7. Fix: rotate the key, run `wrangler pages secret put EXA_API_KEY` (and `EXA_FALLBACK_API_KEY`) for both projects, then redeploy.
 
 ---
 

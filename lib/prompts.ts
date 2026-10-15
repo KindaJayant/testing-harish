@@ -9,24 +9,91 @@ const CONTEXT_BLOCK = `CRITICAL FACTUAL GROUNDING & DUAL-SOURCE RECONFIRMATION C
      * Source A: Moneycontrol
      * Source B: Economic Times
    - Reconfirm that Nifty 50, Bank Nifty, Sensex, and MCX Silver baseline prices match between both sources before computing projected support/resistance, breakouts, and intraday targets.
-   - Ground all price levels in current Indian market reality:
-     * Nifty 50: ~24,000–24,500 range
-     * Bank Nifty: ~57,000–58,500 range
-     * Sensex: ~76,500–77,500 range
-     * MCX Silver: ~₹2,30,000–₹2,45,000 per kg range (NOT outdated 85k figures).
+   - Anchor every price level (anchor close, S1/S2, R1/R2, targets, stop losses) to the latest prices quoted in the context below. Do not use remembered or assumed price ranges.
+   - MCX Silver is quoted per kg (in 2026 it trades in lakhs per kg, never the outdated ~₹85,000 figures). Use the live per-kg price from the context.
+   - If an instrument's live price is missing from the context, write "Live price unavailable" for its levels instead of estimating.
    - DO NOT invent fictitious numbers.
 
 {{WEB_CONTEXT}}`;
 
-// Dynamic JSON Contract builder to ensure exact columns are returned for each timeframe
-function buildJsonContract(keys: string[], footerNote?: string): string {
+interface ResponseShape {
+  rowNames: string[];
+  keys: string[];
+}
+
+// One named property per table row (in display order) and the string columns every row carries.
+// The same shape drives the prompt contract and the structured-output schema, so the model cannot
+// add, drop or reorder rows.
+export const RESPONSE_SHAPES: Record<AnalysisKind, ResponseShape> = {
+  daily: {
+    rowNames: [
+      "slot_0915_0937",
+      "slot_0937_1030",
+      "slot_1030_1136",
+      "slot_1136_1208",
+      "slot_1208_1224",
+      "slot_1224_1246",
+      "slot_1246_1330",
+      "slot_1330_1430",
+      "slot_1430_1530",
+      "risk_management",
+      "footer_summary"
+    ],
+    keys: ["time_ist", "astro_event", "market_bias", "nifty_impact", "bank_nifty_impact", "mcx_silver_impact", "bullish_sectors", "bearish_sectors", "strategy"]
+  },
+  weekly: {
+    rowNames: ["monday", "tuesday", "wednesday", "thursday", "friday", "footer"],
+    keys: ["time_ist", "day", "astro_event", "market_bias", "nifty_impact", "bank_nifty_impact", "mcx_silver_impact", "bullish_sectors", "bearish_sectors", "strategy"]
+  },
+  monthly: {
+    rowNames: ["week_1", "week_2", "week_3", "week_4", "footer"],
+    keys: ["time_ist", "dates", "astro_event", "market_bias", "nifty_impact", "bank_nifty_impact", "mcx_silver_impact", "bullish_sectors", "bearish_sectors", "strategy"]
+  },
+  half_yearly: {
+    rowNames: ["month_1", "month_2", "month_3", "month_4", "month_5", "month_6", "footer"],
+    keys: ["time_ist", "astro_event", "market_bias", "nifty_impact", "bank_nifty_impact", "mcx_silver_impact", "bullish_sectors", "bearish_sectors", "position_size_base", "strategy"]
+  },
+  yearly: {
+    rowNames: ["quarter_1", "quarter_2", "quarter_3", "quarter_4", "footer"],
+    keys: ["time_ist", "astro_event", "market_bias", "nifty_impact", "bank_nifty_impact", "mcx_silver_impact", "sector_allocation", "stock_focus", "position_size_base", "strategy"]
+  },
+  sector: {
+    rowNames: ["stock_1", "stock_2", "stock_3"],
+    keys: ["time_ist", "astro_event", "nifty_impact", "bank_nifty_impact", "mcx_silver_impact", "sector_focus", "stock_focus", "strategy"]
+  }
+};
+
+export function buildResponseSchema(kind: AnalysisKind): Record<string, unknown> {
+  const { rowNames, keys } = RESPONSE_SHAPES[kind];
+  const rowSchema = {
+    type: "object",
+    properties: Object.fromEntries(keys.map((key) => [key, { type: "string" }])),
+    required: keys,
+    additionalProperties: false
+  };
+
+  // Rows reference one shared definition; inlining it per row makes the Daily and Half-Yearly
+  // grammars too large for Anthropic's strict mode.
+  return {
+    type: "object",
+    properties: Object.fromEntries(rowNames.map((name) => [name, { $ref: "#/$defs/row" }])),
+    required: rowNames,
+    additionalProperties: false,
+    $defs: { row: rowSchema }
+  };
+}
+
+// Dynamic JSON Contract builder to ensure exact rows and columns are returned for each timeframe
+function buildJsonContract(kind: AnalysisKind, footerNote?: string): string {
+  const { rowNames, keys } = RESPONSE_SHAPES[kind];
   const keysList = keys.map((key) => `- ${key}`).join("\n");
   const footerStr = footerNote
-    ? `\nInclude footer/summary rows as normal objects using time_ist values such as: ${footerNote}.`
+    ? `\nFor the footer/summary rows, use time_ist values such as: ${footerNote}.`
     : "";
 
-  return `Return only a raw JSON array. Do not return markdown, prose, explanation, preamble, or code fences.
-Every object in the array must contain exactly these ${keys.length} string keys:
+  return `Return only a raw JSON object. Do not return markdown, prose, explanation, preamble, or code fences.
+The object must contain exactly these ${rowNames.length} row properties, in this order: ${rowNames.join(", ")}.
+Each row is an object with exactly these ${keys.length} string keys:
 ${keysList}
 
 Map the requested table columns into those keys in order. Keep all details inside the matching JSON fields. All values must be strings.${footerStr}`;
@@ -78,14 +145,14 @@ const HIERARCHICAL_DECISION_RULES = `
 
 const DAILY_PROMPT = `### 🏆 TRIPLE CONFIRMATION 6.0 – INTRADAY TRADING PLAN
 
-Generate a structured, clean, and concise intraday trading plan for {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver across 8 standard time slots:
+Generate a structured, clean, and concise intraday trading plan for {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver across 9 standard time slots, followed by a Risk Management row and a Footer Summary row:
 Time Slots: 09:15-09:37, 09:37-10:30, 10:30-11:36, 11:36-12:08, 12:08-12:24, 12:24-12:46, 12:46-13:30, 13:30-14:30, 14:30-15:30.
 
 CRITICAL FORMATTING RULES — KEEP OUTPUT CONCISE AND HIGH-SIGNAL:
 - Market Bias: State single bias keyword (e.g. BULLISH, BEARISH, NEUTRAL, VOLATILE / AVOID) followed by a short 1-line reason (max 15 words). DO NOT write lengthy multi-sentence paragraphs.
 - Astrological Event: Terse format: "Nakshatra: [Name] (till [Time]) | Hora: [Planet] | Karana: [Name] | Yoga: [Name] | Restrictions: [Yamaganda/Gulika/Rahu/None] | Abhijit: [Active/Absent]".
 - Technical Levels: Clean format with Anchor Close, S1/S2, R1/R2, Breakout levels.
-- Silver: Clean format: "Anchor: ~Rs 2,42,000/kg | S: 2,40,000 / 2,38,000 | R: 2,44,000 / 2,46,000 | Entry: Buy/Sell setup, SL, T1, T2".
+- Silver: Clean format: "Anchor: ~Rs [live MCX price]/kg | S: [S1] / [S2] | R: [R1] / [R2] | Entry: Buy/Sell setup, SL, T1, T2", with every level derived from the live MCX Silver price in the context.
 - Bullish / Bearish Sectors: List 2 sectors with 2 stocks each (e.g. "Pharma (Sun Pharma, Cipla) | FMCG (ITC, Dabur)").
 - Actionable Strategy: Direct trade instruction with Position Size % and SL. If inauspicious window active: "AVOID — NO NEW ENTRIES ([Reason]). Size: 0% new."
 
@@ -93,20 +160,7 @@ ${HIERARCHICAL_DECISION_RULES}
 
 ${CONTEXT_BLOCK}
 
-${buildJsonContract(
-  [
-    "time_ist",
-    "astro_event",
-    "market_bias",
-    "nifty_impact",
-    "bank_nifty_impact",
-    "mcx_silver_impact",
-    "bullish_sectors",
-    "bearish_sectors",
-    "strategy"
-  ],
-  '"Risk Management", "Footer Summary"'
-)}`;
+${buildJsonContract("daily", '"Risk Management", "Footer Summary"')}`;
 
 const WEEKLY_PROMPT = `### 🏆 TRIPLE CONFIRMATION 6.0 – WEEKLY TRADING PLAN
 
@@ -116,7 +170,7 @@ CRITICAL FORMATTING RULES — CONCISE & STRUCTURED:
 - Market Bias: Single bias keyword + 1-line concise reason.
 - Astrological Highlights: Terse format: "Tithi: [Name] | Nakshatra: [Name] | Yoga: [Name] | Karana: [Name] | Best Hora: [Planet] | Restrictions: [Times]".
 - Technical Levels: Expected weekly/daily S1/S2, R1/R2, 20/50/200 EMA trend, RSI-14.
-- Silver: Expected range (S/R) in ~Rs 2,30,000–2,45,000/kg band.
+- Silver: Expected weekly S/R range (per kg) built around the live MCX Silver price in the context.
 - Sectors: 2 Favoured sectors with 2 stocks each, 2 Bearish sectors with 2 stocks each.
 - Actionable Strategy: Recommended entry window, Position Size %, and Stop Loss guidance.
 
@@ -124,27 +178,13 @@ ${HIERARCHICAL_DECISION_RULES}
 
 ${CONTEXT_BLOCK}
 
-${buildJsonContract(
-  [
-    "time_ist",
-    "day",
-    "astro_event",
-    "market_bias",
-    "nifty_impact",
-    "bank_nifty_impact",
-    "mcx_silver_impact",
-    "bullish_sectors",
-    "bearish_sectors",
-    "strategy"
-  ],
-  '"Footer Row" or "Weekly Summary"'
-)}`;
+${buildJsonContract("weekly", '"Footer Row" or "Weekly Summary"')}`;
 
 const MONTHLY_PROMPT = `### 🏆 TRIPLE CONFIRMATION 6.0 – THE COMPLETE TIMEFRAME MASTER SYSTEM
 
 Act as my Triple Confirmation trading professor. You are a world-class expert in Vedic Astrology (Jyotish), Technical Analysis, Fundamental Market Cues, and Time-Cycle Analysis. You speak in warm, direct Hinglish when explaining reasoning but present data professionally.
 
-Generate a monthly trading plan for {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. Each row must be one week (4 weeks total), with a final footer row for month-end targets.
+Generate a monthly trading plan for the calendar month that contains {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. Each row must be one week (4 weeks total), with a final footer row for month-end targets. Output exactly 5 rows: Week 1 (days 1–7), Week 2 (days 8–14), Week 3 (days 15–21), Week 4 (day 22 to month end), in order, then one Footer Row. Do not add any other rows.
 
 Requirements per week:
 1. Major Astrological Events: Planet ingress, retrograde start/end, exaltation/debilitation, eclipse (solar/lunar) - mark 3 days before/after as "cash preferred", Vimshottari Dasha theme for the month.
@@ -161,27 +201,13 @@ ${HIERARCHICAL_DECISION_RULES}
 
 ${CONTEXT_BLOCK}
 
-${buildJsonContract(
-  [
-    "time_ist",
-    "dates",
-    "astro_event",
-    "market_bias",
-    "nifty_impact",
-    "bank_nifty_impact",
-    "mcx_silver_impact",
-    "bullish_sectors",
-    "bearish_sectors",
-    "strategy"
-  ],
-  '"Footer Row" or "Month-End Targets"'
-)}`;
+${buildJsonContract("monthly", '"Footer Row" or "Month-End Targets"')}`;
 
 const HALF_YEARLY_PROMPT = `### 🏆 TRIPLE CONFIRMATION 6.0 – THE COMPLETE TIMEFRAME MASTER SYSTEM
 
 Act as my Triple Confirmation trading professor. You are a world-class expert in Vedic Astrology (Jyotish), Technical Analysis, Fundamental Market Cues, and Time-Cycle Analysis. You speak in warm, direct Hinglish when explaining reasoning but present data professionally.
 
-Generate a half-yearly trading plan anchored to {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. Each row must be one month (6 months total), with a final footer row for half-year summary.
+Generate a half-yearly trading plan anchored to {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. Each row must be one month (6 months total), with a final footer row for half-year summary. Output exactly 7 rows: the 6 consecutive calendar months starting with the month that contains {{DATE}}, in order, then one Footer Row. Do not add a separate row for {{DATE}} itself or any other rows.
 
 Requirements per month:
 1. Key Astrological Events: Exact dates of Sun/Mercury/Venus/Mars/Jupiter/Saturn sign changes, retrograde periods, eclipses (with cash recommendation 3 days before/after), equinox/solstice.
@@ -199,27 +225,13 @@ ${HIERARCHICAL_DECISION_RULES}
 
 ${CONTEXT_BLOCK}
 
-${buildJsonContract(
-  [
-    "time_ist",
-    "astro_event",
-    "market_bias",
-    "nifty_impact",
-    "bank_nifty_impact",
-    "mcx_silver_impact",
-    "bullish_sectors",
-    "bearish_sectors",
-    "position_size_base",
-    "strategy"
-  ],
-  '"Footer Row" or "Half-Year Summary"'
-)}`;
+${buildJsonContract("half_yearly", '"Footer Row" or "Half-Year Summary"')}`;
 
 const YEARLY_PROMPT = `### 🏆 TRIPLE CONFIRMATION 6.0 – THE COMPLETE TIMEFRAME MASTER SYSTEM
 
 Act as my Triple Confirmation trading professor. You are a world-class expert in Vedic Astrology (Jyotish), Technical Analysis, Fundamental Market Cues, and Time-Cycle Analysis. You speak in warm, direct Hinglish when explaining reasoning but present data professionally.
 
-Generate an annual trading plan anchored to {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. Each row must be one quarter (4 quarters total), with a final footer row for year-end targets.
+Generate an annual trading plan anchored to {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. Each row must be one quarter (4 quarters total), with a final footer row for year-end targets. Output exactly 5 rows: the 4 consecutive calendar quarters starting with the quarter that contains {{DATE}}, in order, then one Footer Row. Do not add any other rows.
 
 Requirements per quarter:
 1. Major Astrological Events: All planet ingresses, retrogrades, solar/lunar eclipses (with cash windows), equinox/solstice dates.
@@ -237,28 +249,14 @@ ${HIERARCHICAL_DECISION_RULES}
 
 ${CONTEXT_BLOCK}
 
-${buildJsonContract(
-  [
-    "time_ist",
-    "astro_event",
-    "market_bias",
-    "nifty_impact",
-    "bank_nifty_impact",
-    "mcx_silver_impact",
-    "sector_allocation",
-    "stock_focus",
-    "position_size_base",
-    "strategy"
-  ],
-  '"Footer Row" or "Year-End Targets"'
-)}`;
+${buildJsonContract("yearly", '"Footer Row" or "Year-End Targets"')}`;
 
 const SECTOR_PROMPT = `### 🏆 TRIPLE CONFIRMATION 6.0 – SECTOR STOCK SELECTOR & ANALYSIS
 
 Perform a rigorous, high-conviction Stock Selection & Triple Confirmation Analysis for the **{{SECTOR}}** sector on **{{DATE}}**.
 
 CRITICAL INSTRUCTIONS & ACCURACY STANDARDS:
-1. Return 3 to 4 distinct stock cards where each item represents ONE specific company stock in the {{SECTOR}} sector (e.g., time_ist: "Stock 1: HDFC Bank", time_ist: "Stock 2: ICICI Bank", time_ist: "Stock 3: State Bank of India").
+1. Return exactly 3 distinct stock cards where each item represents ONE specific company stock in the {{SECTOR}} sector (e.g., time_ist: "Stock 1: HDFC Bank", time_ist: "Stock 2: ICICI Bank", time_ist: "Stock 3: State Bank of India").
 2. Real Numerical Precision (NO VAGUE TEXT OR TIME SLOTS IN CARD TITLES):
    - time_ist: "Stock [Number]: [Stock Name & NSE Symbol]"
    - astro_event (Astro Checklist): Sector Ruling Planet dignity today, Abhijit Muhurta timing (11:55-12:46 IST), Nakshatra & Yoga alignment, Inauspicious hours (Yamaganda/Gulika/Rahu) to avoid.
@@ -271,18 +269,7 @@ CRITICAL INSTRUCTIONS & ACCURACY STANDARDS:
 
 ${CONTEXT_BLOCK}
 
-${buildJsonContract(
-  [
-    "time_ist",
-    "astro_event",
-    "nifty_impact",
-    "bank_nifty_impact",
-    "mcx_silver_impact",
-    "sector_focus",
-    "stock_focus",
-    "strategy"
-  ]
-)}`;
+${buildJsonContract("sector")}`;
 
 export const MARKET_PROMPTS: Record<Period, string> = {
   daily: DAILY_PROMPT,
