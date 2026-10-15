@@ -76,8 +76,13 @@ export async function getExaWebContext(
   period: string,
   sector?: string
 ): Promise<string> {
-  const primaryKey = process.env.EXA_API_KEY || "8e6ee032-dab5-402b-ba30-d1c5f00f95c3";
-  const fallbackKey = process.env.EXA_FALLBACK_API_KEY || "8e6ee032-dab5-402b-ba30-d1c5f00f95c3";
+  const primaryKey = process.env.EXA_API_KEY;
+
+  if (!primaryKey) {
+    throw new Error("EXA_API_KEY is not configured.");
+  }
+
+  const fallbackKey = process.env.EXA_FALLBACK_API_KEY || primaryKey;
 
   const drikUrl = getDrikPanchangUrl(date);
   const mcQuery = buildMoneycontrolQuery(date, period, sector);

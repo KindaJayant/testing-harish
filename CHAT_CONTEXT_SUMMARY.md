@@ -31,7 +31,7 @@ The system synthesizes:
   - `origin` -> `https://github.com/KindaJayant/tradewise-harish.git`
   - `testing` -> `https://github.com/KindaJayant/testing-harish.git`
 - **Cloudflare Accounts & Projects:**
-  - Cloudflare Account: `Tech.product@thefuture.university's Account` (`676dd9bd0c6ffcf75b2107c497f0b249`)
+  - Cloudflare Account: `Tech.product@thefuture.university's Account` (`676dd9bd…f0b249`)
   - Testing Project Name: `testing-harish` (`https://testing-harish.pages.dev`)
   - Production Project Name: `tradewise` (`https://tradewise-aon.pages.dev`)
 
@@ -42,14 +42,14 @@ The system synthesizes:
 ### File: `.env.local`
 ```env
 OPENROUTER_API_KEY="sk-or-v1-********************************"
-OPENROUTER_MODEL="google/gemini-3.8-flash"
+OPENROUTER_MODEL="anthropic/claude-haiku-5.5"
 EXA_API_KEY="8e6ee032-****-****-****-d1c5f00f95c3"
 EXA_FALLBACK_API_KEY="8e6ee032-****-****-****-d1c5f00f95c3"
 ```
 
 ### Active AI & Search Providers:
-- **LLM Engine:** `google/gemini-3.8-flash` via OpenRouter.
-- **Search Engine:** Exa.ai API (freshly topped-up key `8e6ee032-dab5-402b-ba30-d1c5f00f95c3`).
+- **LLM Engine:** `anthropic/claude-haiku-5.5` via OpenRouter, with reasoning disabled (see Milestone 8). Production reads the model from the `OPENROUTER_MODEL` Cloudflare Pages secret.
+- **Search Engine:** Exa.ai API (freshly topped-up key `8e6ee032…95c3`, read from `EXA_API_KEY`; never commit the full value).
 - **Edge Build Wrapper:** Node.js script `patch-fs.js` to patch Windows-specific Vercel CLI / Cloudflare build nuances:
   ```bash
   cmd /c "set NODE_OPTIONS=-r D:/projects/tradewise-harish/patch-fs.js && D:\projects\tradewise-harish\bin\npx.exe @cloudflare/next-on-pages@1.13.16"
@@ -106,9 +106,16 @@ EXA_FALLBACK_API_KEY="8e6ee032-****-****-****-d1c5f00f95c3"
 - **Issue:** Standalone Exa keys ran out of credits (`402 Payment Required` / `NO_MORE_CREDITS`).
 - **Temporary Fix Explored & Reverted:** Temporarily tested OpenRouter's Perplexity web search plugin, but user instructed to revert all changes and use a fresh Exa API key instead.
 - **Reversion:** Reverted cleanly with `git revert 3e24ac0`.
-- **Fresh Exa Key:** Added user's new key `8e6ee032-dab5-402b-ba30-d1c5f00f95c3` to `.env.local` and `lib/exa.ts`.
+- **Fresh Exa Key:** Added user's new key (`8e6ee032…95c3`) to `.env.local` and the Cloudflare Pages secrets. (It was briefly hardcoded as a fallback in `lib/exa.ts`; that fallback has since been removed.)
 - **Model Upgrade:** Upgraded `OPENROUTER_MODEL` from `google/gemini-3.7-flash` to **`google/gemini-3.8-flash`**.
 - **Automated Browser Subagent Verification:** Automated tests verified both `testing-harish.pages.dev` and `tradewise-aon.pages.dev` respond with `HTTP 200 (success: true)`, matching 11 rows for Daily, 6 rows for Weekly, and realistic dynamic market anchors.
+
+### Milestone 8: Switch to Claude Haiku 5.5 & Secret Cleanup (15 Oct 2026)
+- **Model:** `OPENROUTER_MODEL` changed to `anthropic/claude-haiku-5.5` in `.env.local` and in the Cloudflare Pages secrets for both projects. It is about 7x cheaper per token than Gemini 3.8 Flash and roughly 2x faster on Daily (~20s vs ~49s).
+- **Reasoning disabled (`lib/openrouter.ts`):** Haiku 5.5 reasons by default, and its reasoning tokens count against `max_tokens: 12000`. On the Daily prompt it used the whole budget and returned empty or truncated JSON. The request now sends `reasoning: { enabled: false }`.
+- **Sampling params:** OpenRouter does not support `temperature`, `top_p` or `seed` for Haiku 5.5 and silently drops them, so repeated runs are not byte-identical.
+- **Weekly prompt (`lib/prompts.ts`):** Haiku took "week starting {{DATE}}" literally and ran mid-week dates into the next week (8 rows). The prompt now says to cover the Mon–Fri week that contains the date, in exactly 6 rows.
+- **Secrets:** Removed the hardcoded Exa key fallback from `lib/exa.ts`; it now throws `EXA_API_KEY is not configured.` when the env var is missing. Masked the key in this document. The full key remains in public git history (commits `a34870e`, `23e6a57`), so it should be rotated.
 
 ---
 
@@ -145,8 +152,8 @@ D:\projects\tradewise-harish\
 
 | Target | Deployment URL | Git Remote | Git Branch | Model | Search Provider | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :---: |
-| **Testing** | [https://testing-harish.pages.dev](https://testing-harish.pages.dev) | `testing` | `main` | `google/gemini-3.8-flash` | Exa.ai (`8e6ee032...`) | ✅ Live |
-| **Production** | [https://tradewise-aon.pages.dev](https://tradewise-aon.pages.dev) | `origin` | `main` | `google/gemini-3.8-flash` | Exa.ai (`8e6ee032...`) | ✅ Live |
+| **Testing** | [https://testing-harish.pages.dev](https://testing-harish.pages.dev) | `testing` | `main` | `anthropic/claude-haiku-5.5` | Exa.ai (`8e6ee032...`) | ✅ Live |
+| **Production** | [https://tradewise-aon.pages.dev](https://tradewise-aon.pages.dev) | `origin` | `main` | `anthropic/claude-haiku-5.5` | Exa.ai (`8e6ee032...`) | ✅ Live |
 
 ---
 

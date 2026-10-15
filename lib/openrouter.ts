@@ -57,7 +57,10 @@ export async function runOpenRouterAnalysis(prompt: string): Promise<string> {
       temperature: 0.0,
       top_p: 1.0,
       seed: 42,
-      max_tokens: 12000
+      max_tokens: 12000,
+      // Reasoning tokens count against max_tokens; with it on, claude-haiku-5.5 can spend the
+      // whole budget thinking on the Daily prompt and return empty or truncated JSON.
+      reasoning: { enabled: false }
     }),
     cache: "no-store"
   });

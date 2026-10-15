@@ -110,7 +110,7 @@ ${buildJsonContract(
 
 const WEEKLY_PROMPT = `### 🏆 TRIPLE CONFIRMATION 6.0 – WEEKLY TRADING PLAN
 
-Generate a structured, clean, and concise weekly trading plan for the week starting {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. Each row is one trading day (Monday to Friday), plus a final Footer Row.
+Generate a structured, clean, and concise weekly trading plan for the trading week (Monday to Friday) that contains {{DATE}} for Nifty, Bank Nifty, Sensex, and MCX Silver. If {{DATE}} falls mid-week, still cover that same week's Monday to Friday; do not roll into the following week. Output exactly 6 rows: one per trading day, Monday to Friday in order, plus a final Footer Row.
 
 CRITICAL FORMATTING RULES — CONCISE & STRUCTURED:
 - Market Bias: Single bias keyword + 1-line concise reason.
